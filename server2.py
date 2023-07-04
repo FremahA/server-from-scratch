@@ -46,8 +46,8 @@ class WSGIServer(object):
 
         env = self.get_environ()
 
-        # It's time to call our application callable and get
-        # back a result that will become HTTP response body
+        # call our application callable and get
+        # result that will become HTTP response body
         result = self.application(env, self.start_response)
 
         self.finish_response(result)
