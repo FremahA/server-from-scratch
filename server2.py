@@ -9,7 +9,6 @@ class WSGIServer(object):
     request_queue_size = 1
 
     def __init__(self, server_address) -> None:
-        # Create a listening socket
         self.listen_socket = listen_socket = socket.socket(
             self.address_family,
             self.socket_type
@@ -17,11 +16,9 @@ class WSGIServer(object):
 
         # Allow to reuse same address
         listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        # Bind
         listen_socket.bind(server_address)
         # Activate
         listen_socket.listen(self.request_queue_size)
-        # Get server host name and port
         host, port = self.listen_socket.getsockname()[:2]
         self.server_name = socket.getfqdn(host)
         self.server_port = port
@@ -36,28 +33,23 @@ class WSGIServer(object):
         while True:
             # New client connection
             self.client_connection, client_address = listen_socket.accept()
-            # Handle one request and closet he client connection
-            # Loop over to wait for another client connection
             self.handle_one_request()
 
     def handle_one_request(self):
         request_data = self.client_connection.recv(1024)
         self.request_data = request_data = request_data.decode('utf-8')
-        # Print formatted request data a la 'curl -v'
         print(''.join(
             f'< {line}\n' for line in request_data.splitlines()
         ))
 
         self.parse_request(request_data)
 
-        # Construct environment dictionary using request data
         env = self.get_environ()
 
         # It's time to call our application callable and get
         # back a result that will become HTTP response body
         result = self.application(env, self.start_response)
 
-        # Construct a response and send it back to the client
         self.finish_response(result)
 
     def parse_request(self, text):
@@ -71,10 +63,6 @@ class WSGIServer(object):
 
     def get_environ(self):
         env = {}
-        # The following code snippet does not follow PEP8 conventions
-        # but it's formatted the way it is for demonstration purposes
-        # to emphasize the required variables and their values
-        #
         # Required WSGI variables
         env['wsgi.version']      = (1, 0)
         env['wsgi.url_scheme']   = 'http'
@@ -91,15 +79,11 @@ class WSGIServer(object):
         return env
     
     def start_response(self, status, response_headers, exc_info=None):
-        # Add necessary server headers
         server_headers = [
             ('Date', 'Mon, 03 Jul 2023 3:54:48 GMT'),
             ('Server', 'WSGIServer 0.2'),
         ]
         self.headers_set = [status, response_headers + server_headers]
-        # To adhere to WSGI specification the start_response must return
-        # a 'write' callable. For simplicity's sake we'll ignore that detail
-        # for now.
         # return self.finish_response
 
     def finish_response(self, result):
@@ -111,7 +95,6 @@ class WSGIServer(object):
             response += '\r\n'
             for data in result:
                 response += data.decode('utf-8')
-            # Print formatted response data a la 'curl -v'
             print(''.join(
                 f'> {line}\n' for line in response.splitlines()
             ))
