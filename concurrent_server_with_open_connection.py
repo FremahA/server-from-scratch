@@ -25,19 +25,16 @@ def serve_forever():
     clients = []
     while True:
         client_connection, client_address = listen_socket.accept()
-        # store the reference otherwise it's garbage collected
-        # on the next loop run
         clients.append(client_connection)
         pid = os.fork()
-        if pid == 0:  # child
-            listen_socket.close()  # close child copy
+        if pid == 0:  
+            listen_socket.close()  
             handle_request(client_connection)
             client_connection.close()
-            os._exit(0)  # child exits here
-        else:  # parent
+            os._exit(0)  
+        else:  
             # client_connection.close()
             print(len(clients))
 
 if __name__ == '__main__':
     serve_forever()
-    

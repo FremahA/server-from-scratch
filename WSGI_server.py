@@ -14,7 +14,6 @@ class WSGIServer(object):
             self.socket_type
         )
 
-        # Allow to reuse same address
         listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         listen_socket.bind(server_address)
         # Activate
@@ -46,8 +45,6 @@ class WSGIServer(object):
 
         env = self.get_environ()
 
-        # call our application callable and get
-        # result that will become HTTP response body
         result = self.application(env, self.start_response)
 
         self.finish_response(result)
