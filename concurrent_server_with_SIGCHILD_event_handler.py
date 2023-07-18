@@ -1,18 +1,24 @@
+import errno
 import os
 import signal
 import socket
-import time
 
 SERVER_ADDRESS = (HOST, PORT) = '', 8888
-REQUEST_QUEUE_SIZE = 5
+REQUEST_QUEUE_SIZE = 1024
 
 
 def grim_reaper(signum, frame):
-    pid, status = os.wait()
-    print(
-        'Child {pid} terminated with status {status}'
-        '\n'.format(pid=pid, status=status)
-    )
+    while True:
+        try:
+            pid, status = os.waitpid(
+                -1,          # Wait for any child process
+                 os.WNOHANG  # Do not block and return EWOULDBLOCK error
+            )
+        except OSError:
+            return
+
+        if pid == 0:  # no more zombies
+            return
 
 
 def handle_request(client_connection):
@@ -24,8 +30,6 @@ HTTP/1.1 200 OK
 Hello, World!
 """
     client_connection.sendall(http_response)
-    # sleep to allow the parent to loop over to 'accept' and block there
-    time.sleep(3)
 
 
 def serve_forever():
@@ -38,16 +42,24 @@ def serve_forever():
     signal.signal(signal.SIGCHLD, grim_reaper)
 
     while True:
-        client_connection, client_address = listen_socket.accept()
+        try:
+            client_connection, client_address = listen_socket.accept()
+        except IOError as e:
+            code, msg = e.args
+            # restart 'accept' if it was interrupted
+            if code == errno.EINTR:
+                continue
+            else:
+                raise
+
         pid = os.fork()
-        if pid == 0: 
-            listen_socket.close()  
+        if pid == 0:  
+            listen_socket.close()
             handle_request(client_connection)
             client_connection.close()
             os._exit(0)
-        else: 
-            client_connection.close()
+        else:  
+            client_connection.close()  
 
 if __name__ == '__main__':
     serve_forever()
-    
