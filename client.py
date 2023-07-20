@@ -28,7 +28,7 @@ def main(max_clients, max_conns):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
-        description='Test client for LSBAWS.',
+        description='Test client for server from scratch.',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
