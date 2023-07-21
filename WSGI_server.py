@@ -1,25 +1,22 @@
-#  Python Web Server Gateway Interface (WSGI)
 import errno
 import os
 import signal
 import socket
-import StringIO
+import threading
+import io
 import sys
 
 
 def grim_reaper(signum, frame):
     while True:
         try:
-            pid, status = os.waitpid(
-                -1,          # Wait for any child process
-                 os.WNOHANG  # Do not block and return EWOULDBLOCK error
-            )
+            pid, status = os.waitpid(-1, os.WNOHANG)
         except OSError:
             return
 
         if pid == 0:  # no more zombies
             return
-        
+
 
 class WSGIServer(object):
     address_family = socket.AF_INET
@@ -49,7 +46,7 @@ class WSGIServer(object):
         listen_socket = self.listen_socket
         while True:
             try:
-                self.client_connection, client_address = listen_socket.accept()
+                client_connection, client_address = listen_socket.accept()
             except IOError as e:
                 code, msg = e.args
                 # restart 'accept' if it was interrupted
@@ -58,17 +55,11 @@ class WSGIServer(object):
                 else:
                     raise
 
-            pid = os.fork()
-            if pid == 0:  # child
-                listen_socket.close() 
-                self.handle_one_request()
-                os._exit(0)
-            else:  
-                self.client_connection.close()  
+            client_thread = threading.Thread(target=self.handle_one_request, args=(client_connection,))
+            client_thread.start()
 
-    def handle_one_request(self):
-        request_data = self.client_connection.recv(1024)
-        self.request_data = request_data = request_data.decode('utf-8')
+    def handle_one_request(self, client_connection):
+        request_data = client_connection.recv(1024).decode('utf-8')
         print(''.join(
             f'< {line}\n' for line in request_data.splitlines()
         ))
@@ -79,34 +70,34 @@ class WSGIServer(object):
 
         result = self.application(env, self.start_response)
 
-        self.finish_response(result)
+        self.finish_response(client_connection, result)
 
     def parse_request(self, text):
         request_line = text.splitlines()[0]
         request_line = request_line.rstrip('\r\n')
         # Break down request line into components
-        (self.request_method, 
-         self.path,           
-         self.request_version 
-        ) = request_line.split()
+        (self.request_method,
+         self.path,
+         self.request_version
+         ) = request_line.split()
 
     def get_environ(self):
         env = {}
         # Required WSGI variables
-        env['wsgi.version']      = (1, 0)
-        env['wsgi.url_scheme']   = 'http'
-        env['wsgi.input']        = io.StringIO(self.request_data)
-        env['wsgi.errors']       = sys.stderr
-        env['wsgi.multithread']  = False
+        env['wsgi.version'] = (1, 0)
+        env['wsgi.url_scheme'] = 'http'
+        env['wsgi.input'] = io.StringIO(self.request_data)
+        env['wsgi.errors'] = sys.stderr
+        env['wsgi.multithread'] = False
         env['wsgi.multiprocess'] = False
-        env['wsgi.run_once']     = False
+        env['wsgi.run_once'] = False
         # Required CGI variables
-        env['REQUEST_METHOD']    = self.request_method     
-        env['PATH_INFO']         = self.path    
-        env['SERVER_NAME']       = self.server_name   
-        env['SERVER_PORT']       = str(self.server_port)  
+        env['REQUEST_METHOD'] = self.request_method
+        env['PATH_INFO'] = self.path
+        env['SERVER_NAME'] = self.server_name
+        env['SERVER_PORT'] = str(self.server_port)
         return env
-    
+
     def start_response(self, status, response_headers, exc_info=None):
         server_headers = [
             ('Date', 'Mon, 03 Jul 2023 3:54:48 GMT'),
@@ -115,7 +106,7 @@ class WSGIServer(object):
         self.headers_set = [status, response_headers + server_headers]
         # return self.finish_response
 
-    def finish_response(self, result):
+    def finish_response(self, client_connection, result):
         try:
             status, response_headers = self.headers_set
             response = f'HTTP/1.1 {status}\r\n'
@@ -128,9 +119,9 @@ class WSGIServer(object):
                 f'> {line}\n' for line in response.splitlines()
             ))
             response_bytes = response.encode()
-            self.client_connection.sendall(response_bytes)
+            client_connection.sendall(response_bytes)
         finally:
-            self.client_connection.close()
+            client_connection.close()
 
 
 SERVER_ADDRESS = (HOST, PORT) = '', 8888
