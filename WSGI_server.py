@@ -1,7 +1,25 @@
 #  Python Web Server Gateway Interface (WSGI)
-import io
+import errno
+import os
+import signal
 import socket
+import StringIO
 import sys
+
+
+def grim_reaper(signum, frame):
+    while True:
+        try:
+            pid, status = os.waitpid(
+                -1,          # Wait for any child process
+                 os.WNOHANG  # Do not block and return EWOULDBLOCK error
+            )
+        except OSError:
+            return
+
+        if pid == 0:  # no more zombies
+            return
+        
 
 class WSGIServer(object):
     address_family = socket.AF_INET
@@ -30,9 +48,23 @@ class WSGIServer(object):
     def serve_forever(self):
         listen_socket = self.listen_socket
         while True:
-            # New client connection
-            self.client_connection, client_address = listen_socket.accept()
-            self.handle_one_request()
+            try:
+                self.client_connection, client_address = listen_socket.accept()
+            except IOError as e:
+                code, msg = e.args
+                # restart 'accept' if it was interrupted
+                if code == errno.EINTR:
+                    continue
+                else:
+                    raise
+
+            pid = os.fork()
+            if pid == 0:  # child
+                listen_socket.close() 
+                self.handle_one_request()
+                os._exit(0)
+            else:  
+                self.client_connection.close()  
 
     def handle_one_request(self):
         request_data = self.client_connection.recv(1024)
@@ -53,9 +85,9 @@ class WSGIServer(object):
         request_line = text.splitlines()[0]
         request_line = request_line.rstrip('\r\n')
         # Break down request line into components
-        (self.request_method, # GET
-         self.path,           # /hello
-         self.request_version # HTTP/1.1
+        (self.request_method, 
+         self.path,           
+         self.request_version 
         ) = request_line.split()
 
     def get_environ(self):
@@ -69,10 +101,10 @@ class WSGIServer(object):
         env['wsgi.multiprocess'] = False
         env['wsgi.run_once']     = False
         # Required CGI variables
-        env['REQUEST_METHOD']    = self.request_method     # GET
-        env['PATH_INFO']         = self.path     # /hello
-        env['SERVER_NAME']       = self.server_name   # localhost
-        env['SERVER_PORT']       = str(self.server_port)  # 8888
+        env['REQUEST_METHOD']    = self.request_method     
+        env['PATH_INFO']         = self.path    
+        env['SERVER_NAME']       = self.server_name   
+        env['SERVER_PORT']       = str(self.server_port)  
         return env
     
     def start_response(self, status, response_headers, exc_info=None):
