@@ -7,17 +7,6 @@ import io
 import sys
 
 
-def grim_reaper(signum, frame):
-    while True:
-        try:
-            pid, status = os.waitpid(-1, os.WNOHANG)
-        except OSError:
-            return
-
-        if pid == 0:  # no more zombies
-            return
-
-
 class WSGIServer(object):
     address_family = socket.AF_INET
     socket_type = socket.SOCK_STREAM
@@ -31,13 +20,31 @@ class WSGIServer(object):
 
         listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         listen_socket.bind(server_address)
-        # Activate
         listen_socket.listen(self.request_queue_size)
         host, port = self.listen_socket.getsockname()[:2]
         self.server_name = socket.getfqdn(host)
         self.server_port = port
-        # Return headers set by Web framework
         self.headers_set = []
+
+        self.routing_table = {}
+
+        signal.signal(signal.SIGCHLD, self.grim_reaper)
+
+    def grim_reaper(self, signum, frame):
+        while True:
+            try:
+                pid, status = os.waitpid(-1, os.WNOHANG)
+            except OSError:
+                return
+
+            if pid == 0:  # no more zombies
+                return
+            
+    def add_route(self, path, http_method, handler):
+        self.routing_table[(path, http_method)] = handler
+
+    def get_handler(self, path, http_method):
+        return self.routing_table.get((path, http_method))
 
     def set_app(self, application):
         self.application = application
@@ -68,14 +75,17 @@ class WSGIServer(object):
 
         env = self.get_environ()
 
-        result = self.application(env, self.start_response)
+        handler = self.get_handler(self.path, self.request_method)
+        if handler:
+            result = handler(env, self.start_response)
+        else:
+            result = [b'404 Not Found']
 
         self.finish_response(client_connection, result)
 
     def parse_request(self, text):
         request_line = text.splitlines()[0]
         request_line = request_line.rstrip('\r\n')
-        # Break down request line into components
         (self.request_method,
          self.path,
          self.request_version
@@ -83,7 +93,6 @@ class WSGIServer(object):
 
     def get_environ(self):
         env = {}
-        # Required WSGI variables
         env['wsgi.version'] = (1, 0)
         env['wsgi.url_scheme'] = 'http'
         env['wsgi.input'] = io.StringIO(self.request_data)
@@ -91,7 +100,6 @@ class WSGIServer(object):
         env['wsgi.multithread'] = False
         env['wsgi.multiprocess'] = False
         env['wsgi.run_once'] = False
-        # Required CGI variables
         env['REQUEST_METHOD'] = self.request_method
         env['PATH_INFO'] = self.path
         env['SERVER_NAME'] = self.server_name
@@ -133,6 +141,28 @@ def make_server(server_address, application):
     return server
 
 
+# Define your route handlers (these are example handlers, you should replace them with your actual handlers)
+def handle_home(env, start_response):
+    start_response('200 OK', [('Content-type', 'text/html')])
+    return [b'Welcome to the home page!']
+
+def handle_about(env, start_response):
+    start_response('200 OK', [('Content-type', 'text/html')])
+    return [b'This is the about page.']
+
+def handle_contact(env, start_response):
+    start_response('200 OK', [('Content-type', 'text/html')])
+    return [b'You can contact us here.']
+
+def handle_submit(env, start_response):
+    if env['REQUEST_METHOD'] == 'POST':
+        # Handle form submission here
+        start_response('200 OK', [('Content-type', 'text/html')])
+        return [b'Form submitted successfully!']
+    else:
+        start_response('405 Method Not Allowed', [('Content-type', 'text/html')])
+        return [b'Invalid request method.']
+
 if __name__ == '__main__':
     if len(sys.argv) < 2:
         sys.exit('Provide a WSGI application object as module:callable')
@@ -141,5 +171,9 @@ if __name__ == '__main__':
     module = __import__(module)
     application = getattr(module, application)
     httpd = make_server(SERVER_ADDRESS, application)
+    httpd.add_route('/', 'GET', handle_home)
+    httpd.add_route('/about', 'GET', handle_about)
+    httpd.add_route('/contact', 'GET', handle_contact)
+    httpd.add_route('/submit', 'POST', handle_submit)
     print(f'WSGIServer: Serving HTTP on port {PORT} ...\n')
     httpd.serve_forever()
