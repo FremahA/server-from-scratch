@@ -1,10 +1,10 @@
 import errno
+import io
 import os
 import signal
 import socket
-import threading
-import io
 import sys
+import threading
 
 
 class WSGIServer(object):
@@ -14,8 +14,7 @@ class WSGIServer(object):
 
     def __init__(self, server_address) -> None:
         self.listen_socket = listen_socket = socket.socket(
-            self.address_family,
-            self.socket_type
+            self.address_family, self.socket_type
         )
 
         listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -37,9 +36,9 @@ class WSGIServer(object):
             except OSError:
                 return
 
-            if pid == 0:  # no more zombies
+            if pid == 0:
                 return
-            
+
     def add_route(self, path, http_method, handler):
         self.routing_table[(path, http_method)] = handler
 
@@ -62,14 +61,14 @@ class WSGIServer(object):
                 else:
                     raise
 
-            client_thread = threading.Thread(target=self.handle_one_request, args=(client_connection,))
+            client_thread = threading.Thread(
+                target=self.handle_one_request, args=(client_connection,)
+            )
             client_thread.start()
 
     def handle_one_request(self, client_connection):
-        request_data = client_connection.recv(1024).decode('utf-8')
-        print(''.join(
-            f'< {line}\n' for line in request_data.splitlines()
-        ))
+        request_data = client_connection.recv(1024).decode("utf-8")
+        print("".join(f"< {line}\n" for line in request_data.splitlines()))
 
         self.parse_request(request_data)
 
@@ -79,37 +78,34 @@ class WSGIServer(object):
         if handler:
             result = handler(env, self.start_response)
         else:
-            result = [b'404 Not Found']
+            result = [b"404 Not Found"]
 
         self.finish_response(client_connection, result)
 
     def parse_request(self, text):
         request_line = text.splitlines()[0]
-        request_line = request_line.rstrip('\r\n')
-        (self.request_method,
-         self.path,
-         self.request_version
-         ) = request_line.split()
+        request_line = request_line.rstrip("\r\n")
+        (self.request_method, self.path, self.request_version) = request_line.split()
 
     def get_environ(self):
         env = {}
-        env['wsgi.version'] = (1, 0)
-        env['wsgi.url_scheme'] = 'http'
-        env['wsgi.input'] = io.StringIO(self.request_data)
-        env['wsgi.errors'] = sys.stderr
-        env['wsgi.multithread'] = False
-        env['wsgi.multiprocess'] = False
-        env['wsgi.run_once'] = False
-        env['REQUEST_METHOD'] = self.request_method
-        env['PATH_INFO'] = self.path
-        env['SERVER_NAME'] = self.server_name
-        env['SERVER_PORT'] = str(self.server_port)
+        env["wsgi.version"] = (1, 0)
+        env["wsgi.url_scheme"] = "http"
+        env["wsgi.input"] = io.StringIO(self.request_data)
+        env["wsgi.errors"] = sys.stderr
+        env["wsgi.multithread"] = False
+        env["wsgi.multiprocess"] = False
+        env["wsgi.run_once"] = False
+        env["REQUEST_METHOD"] = self.request_method
+        env["PATH_INFO"] = self.path
+        env["SERVER_NAME"] = self.server_name
+        env["SERVER_PORT"] = str(self.server_port)
         return env
 
     def start_response(self, status, response_headers, exc_info=None):
         server_headers = [
-            ('Date', 'Mon, 03 Jul 2023 3:54:48 GMT'),
-            ('Server', 'WSGIServer 0.2'),
+            ("Date", "Mon, 03 Jul 2023 3:54:48 GMT"),
+            ("Server", "WSGIServer 0.2"),
         ]
         self.headers_set = [status, response_headers + server_headers]
         # return self.finish_response
@@ -117,22 +113,20 @@ class WSGIServer(object):
     def finish_response(self, client_connection, result):
         try:
             status, response_headers = self.headers_set
-            response = f'HTTP/1.1 {status}\r\n'
+            response = f"HTTP/1.1 {status}\r\n"
             for header in response_headers:
-                response += '{0}: {1}\r\n'.format(*header)
-            response += '\r\n'
+                response += "{0}: {1}\r\n".format(*header)
+            response += "\r\n"
             for data in result:
-                response += data.decode('utf-8')
-            print(''.join(
-                f'> {line}\n' for line in response.splitlines()
-            ))
+                response += data.decode("utf-8")
+            print("".join(f"> {line}\n" for line in response.splitlines()))
             response_bytes = response.encode()
             client_connection.sendall(response_bytes)
         finally:
             client_connection.close()
 
 
-SERVER_ADDRESS = (HOST, PORT) = '', 8888
+SERVER_ADDRESS = (HOST, PORT) = "", 8888
 
 
 def make_server(server_address, application):
@@ -143,37 +137,41 @@ def make_server(server_address, application):
 
 # Define your route handlers (these are example handlers, you should replace them with your actual handlers)
 def handle_home(env, start_response):
-    start_response('200 OK', [('Content-type', 'text/html')])
-    return [b'Welcome to the home page!']
+    start_response("200 OK", [("Content-type", "text/html")])
+    return [b"Welcome to the home page!"]
+
 
 def handle_about(env, start_response):
-    start_response('200 OK', [('Content-type', 'text/html')])
-    return [b'This is the about page.']
+    start_response("200 OK", [("Content-type", "text/html")])
+    return [b"This is the about page."]
+
 
 def handle_contact(env, start_response):
-    start_response('200 OK', [('Content-type', 'text/html')])
-    return [b'You can contact us here.']
+    start_response("200 OK", [("Content-type", "text/html")])
+    return [b"You can contact us here."]
+
 
 def handle_submit(env, start_response):
-    if env['REQUEST_METHOD'] == 'POST':
+    if env["REQUEST_METHOD"] == "POST":
         # Handle form submission here
-        start_response('200 OK', [('Content-type', 'text/html')])
-        return [b'Form submitted successfully!']
+        start_response("200 OK", [("Content-type", "text/html")])
+        return [b"Form submitted successfully!"]
     else:
-        start_response('405 Method Not Allowed', [('Content-type', 'text/html')])
-        return [b'Invalid request method.']
+        start_response("405 Method Not Allowed", [("Content-type", "text/html")])
+        return [b"Invalid request method."]
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     if len(sys.argv) < 2:
-        sys.exit('Provide a WSGI application object as module:callable')
+        sys.exit("Provide a WSGI application object as module:callable")
     app_path = sys.argv[1]
-    module, application = app_path.split(':')
+    module, application = app_path.split(":")
     module = __import__(module)
     application = getattr(module, application)
     httpd = make_server(SERVER_ADDRESS, application)
-    httpd.add_route('/', 'GET', handle_home)
-    httpd.add_route('/about', 'GET', handle_about)
-    httpd.add_route('/contact', 'GET', handle_contact)
-    httpd.add_route('/submit', 'POST', handle_submit)
-    print(f'WSGIServer: Serving HTTP on port {PORT} ...\n')
+    httpd.add_route("/", "GET", handle_home)
+    httpd.add_route("/about", "GET", handle_about)
+    httpd.add_route("/contact", "GET", handle_contact)
+    httpd.add_route("/submit", "POST", handle_submit)
+    print(f"WSGIServer: Serving HTTP on port {PORT} ...\n")
     httpd.serve_forever()

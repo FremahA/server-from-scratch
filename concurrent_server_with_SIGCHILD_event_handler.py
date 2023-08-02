@@ -3,7 +3,7 @@ import os
 import signal
 import socket
 
-SERVER_ADDRESS = (HOST, PORT) = '', 8888
+SERVER_ADDRESS = (HOST, PORT) = "", 8888
 REQUEST_QUEUE_SIZE = 1024
 
 
@@ -11,8 +11,8 @@ def grim_reaper(signum, frame):
     while True:
         try:
             pid, status = os.waitpid(
-                -1,          # Wait for any child process
-                 os.WNOHANG  # Do not block and return EWOULDBLOCK error
+                -1,  # Wait for any child process
+                os.WNOHANG,  # Do not block and return EWOULDBLOCK error
             )
         except OSError:
             return
@@ -37,7 +37,7 @@ def serve_forever():
     listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     listen_socket.bind(SERVER_ADDRESS)
     listen_socket.listen(REQUEST_QUEUE_SIZE)
-    print('Serving HTTP on port {port} ...'.format(port=PORT))
+    print("Serving HTTP on port {port} ...".format(port=PORT))
 
     signal.signal(signal.SIGCHLD, grim_reaper)
 
@@ -53,13 +53,14 @@ def serve_forever():
                 raise
 
         pid = os.fork()
-        if pid == 0:  
+        if pid == 0:
             listen_socket.close()
             handle_request(client_connection)
             client_connection.close()
             os._exit(0)
-        else:  
-            client_connection.close()  
+        else:
+            client_connection.close()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     serve_forever()
