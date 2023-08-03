@@ -7,6 +7,95 @@ import sys
 import threading
 
 
+class Middleware:
+    def __init__(self, app):
+        self.app = app
+
+    def __call__(self, environ, start_response):
+        return self.app(environ, start_response)
+
+
+class AuthenticationMiddleware(Middleware):
+    def __call__(self, environ, start_response):
+        if not self.authenticate(environ):
+            status = '401 Unauthorized'
+            response_headers = [('Content-type', 'text/plain')]
+            start_response(status, response_headers)
+            return [b'Authentication failed.']
+
+        return super().__call__(environ, start_response)
+    
+    def authenticate(self, environ):
+    # Implement authentication logic
+    # Return True if authenticated, False otherwise
+    # Eg. check for valid credentials in headers or cookies
+        return True
+    
+
+class LoggingMiddleware(Middleware):
+    def __call__(self, environ, start_response):
+        self.log_request(environ)
+        response = super().__call__(environ, start_response)
+        self.log_response(environ, response)
+        return response
+
+    def log_request(self, environ):
+        print("Request:", environ['REQUEST_METHOD'], environ['PATH_INFO'])
+
+    def log_response(self, environ, response):
+        print("Response:", response)
+
+
+
+class RequestModificationMiddleware(Middleware):
+    def __call__(self, environ, start_response):
+        environ['HTTP_X_CUSTOM_HEADER'] = 'Custom Value'
+        return super().__call__(environ, start_response)
+
+
+class ResponseModificationMiddleware(Middleware):
+    def __call__(self, environ, start_response):
+        response = super().__call__(environ, start_response)
+        new_response_headers = [('Custom-Header', 'Custom Value')]
+        return self.response_with_headers(response, new_response_headers)
+
+    def response_with_headers(self, response, headers):
+        status, response_headers = response[0], response[1]
+        for header in headers:
+            response_headers.append(header)
+        return (status, response_headers) + response[2:]
+
+
+class CachingMiddleware(Middleware):
+    cache = {}
+
+    def __call__(self, environ, start_response):
+        cache_key = environ['REQUEST_METHOD'] + ":" + environ['PATH_INFO']
+
+        if cache_key in self.cache:
+            return self.cache[cache_key]
+
+        response = super().__call__(environ, start_response)
+        self.cache[cache_key] = response
+        return response
+
+
+class SecurityMiddleware(Middleware):
+    def __call__(self, environ, start_response):
+        if not self.is_secure_request(environ):
+            status = '403 Forbidden'
+            response_headers = [('Content-type', 'text/plain')]
+            start_response(status, response_headers)
+            return [b'Access denied.']
+
+        return super().__call__(environ, start_response)
+
+    def is_secure_request(self, environ):
+        # Implement security checks 
+        # Return True if the request is secure, False otherwise
+        return True
+
+
 class WSGIServer(object):
     address_family = socket.AF_INET
     socket_type = socket.SOCK_STREAM
@@ -26,8 +115,12 @@ class WSGIServer(object):
         self.headers_set = []
 
         self.routing_table = {}
+        self.middleware_stack = []
 
         signal.signal(signal.SIGCHLD, self.grim_reaper)
+
+    def add_middleware(self, middleware_cls):
+        self.middleware_stack.append(middleware_cls)
 
     def grim_reaper(self, signum, frame):
         while True:
@@ -74,11 +167,11 @@ class WSGIServer(object):
 
         env = self.get_environ()
 
-        handler = self.get_handler(self.path, self.request_method)
-        if handler:
-            result = handler(env, self.start_response)
-        else:
-            result = [b"404 Not Found"]
+        app = self.application
+        for middleware_cls in reversed(self.middleware_stack):
+            app = middleware_cls(app)
+
+        result = app(env, self.start_response)
 
         self.finish_response(client_connection, result)
 
